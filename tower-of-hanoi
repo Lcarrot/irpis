@@ -1,0 +1,96 @@
+#!/bin/bash
+
+# Инициализация стеков
+A=(8 7 6 5 4 3 2 1)
+B=()
+C=()
+
+# Перехват SIGINT
+display_exit_message() {
+    echo -e "Для выхода введите 'q' или 'Q'"
+}
+trap display_exit_message SIGINT
+
+# Функция для вывода стеков
+print_stacks() {
+    # Определяем максимальную высоту стека (максимальное количество дисков)
+    local max_height=8  # Так как у нас 8 дисков в начале
+    local output=()
+
+
+    for ((i = max_height - 1; i >= 0; i--)); do
+        row=""
+
+        for stack in A B C; do
+            local -n current_stack=$stack
+
+            if (( i < ${#current_stack[@]} )); then
+                row+="|${current_stack[i]}|  "
+            else
+                row+="| |  "
+            fi
+        done
+
+        echo "$row"
+    done
+
+    echo "+-+  +-+  +-+"
+    echo " A    B    C "
+}
+
+# Функция для проверки победы
+check_victory() {
+    local target=(8 7 6 5 4 3 2 1)
+    if [[ "${B[*]}" == "${target[*]}" || "${C[*]}" == "${target[*]}" ]]; then
+        echo "Поздравляем! Вы решили головоломку за $move_count ходов!"
+        exit 0
+    fi
+}
+
+# Функция перемещения диска
+move_disk() {
+    local -n from=$1
+    local -n to=$2
+
+    if [[ ${#from[@]} -eq 0 ]]; then
+        echo "Ошибка: Стек $1 пуст. Повторите ввод."
+        return 1
+    fi
+
+    local disk=${from[-1]}
+    if [[ ${#to[@]} -gt 0 && ${to[-1]} -lt $disk ]]; then
+        echo "Такое перемещение запрещено"
+        return 1
+    fi
+
+    unset 'from[-1]'
+    to+=($disk)
+    ((move_count++))
+    return 0
+}
+
+move_count=0
+print_stacks
+
+while true; do
+    read -p "Ход № 1 (откуда, куда):" from to
+
+    if [[ "$from" =~ ^[qQ]$ ]]; then
+        echo "Выход из игры."
+        exit 1
+    fi
+
+    from=${from^^}
+
+    if [[ ${#from} -eq 2 && ${#to} -eq 0 ]]; then
+        to=${from:1:1}
+        from=${from:0:1}
+    fi
+
+    from=${from^^}  # Приведение к верхнему регистру
+    to=${to^^}
+
+    if [[ ! "$from" =~ ^(A|B|C)$ || ! "$to" =~ ^(A|B|C)$ || "$from" == "$to" ]]; then
+        echo "2. Ошибка: Введите два разных имени стеков A, B или C."
+        continue
+    fi

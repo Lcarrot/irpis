@@ -1,0 +1,77 @@
+#!/bin/bash
+
+# Перехват SIGINT
+display_exit_message() {
+    echo -e "Для выхода введите 'q' или 'Q'"
+}
+
+trap display_exit_message SIGINT
+
+echo "********************************************************************************"
+echo "* Я загадал 4-значное число с неповторяющимися цифрами. На каждом ходу делайте *"
+echo "* попытку отгадать загаданное число. Попытка - это 4-значное число с           *"
+echo "* неповторяющимися цифрами.                                                    *"
+echo "********************************************************************************"
+
+# Генерация случайного 4-значного числа с неповторяющимися цифрами
+generate_number() {
+    while true; do
+        local digits=($(shuf -i 0-9 | head -n 4))
+        if [[ ${digits[0]} -ne 0 ]]; then
+            echo "${digits[0]}${digits[1]}${digits[2]}${digits[3]}"
+            return
+        fi
+    done
+}
+
+print_history() {
+    echo "История ходов:"
+    for record in "${attempts[@]}"; do
+        echo "$record"
+    done
+}
+
+calc_cows_and_bulls() {
+    cows=0
+    bulls=0
+    for i in {0..3}; do
+        if [[ ${input:i:1} == ${secret:i:1} ]]; then
+            ((bulls++))
+        elif [[ $secret == *${input:i:1}* ]]; then
+            ((cows++))
+        fi
+    done
+}
+
+secret=$(generate_number)
+
+attempts=()
+attempt=0
+
+while true; do
+    read -p "Введите 4-значное число или 'q' для выхода: " input
+
+    if [[ "$input" =~ ^[qQ]$ ]]; then
+        echo "Выход из игры. Загаданное число было: $secret"
+        exit 1
+    fi
+
+    if [[ ! "$input" =~ ^[0-9]{4}$ ]] || [[ $(echo "$input" | grep -o . | sort | uniq | wc -l) -ne 4 ]]; then
+        echo "Ошибка: введите 4-значное число с неповторяющимися цифрами."
+        continue
+    fi
+
+    ((attempt++))
+
+    calc_cows_and_bulls
+    echo "Попытка $attempt: $input"
+    echo "Коров - $cows, быков - $bulls"
+    attempts+=("$attempt. $input (Коров - $cows, Быков - $bulls)")
+    print_history
+
+    if [[ "$input" == "$secret" ]]; then
+        echo "Поздравляем! Вы угадали число за $attempt попыток!"
+        exit 0
+    fi
+
+done
