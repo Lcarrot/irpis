@@ -1,0 +1,68 @@
+#!/bin/bash
+
+# Проверка на наличие установленного yc
+if ! command -v yc &> /dev/null
+then
+    echo "Yandex Cloud CLI не установлен. Пожалуйста, установите yc."
+    exit 1
+fi
+
+# Вводим необходимые параметры
+NETWORK_NAME="task3-network"
+SUBNET_NAME="task3-subnetwork"
+VM_NAME="task3-vm"
+REGION="ru-central1-a"
+IMAGE_NAME="ubuntu-20-04-lts"
+
+# Шаг 1: Создание облачной сети https://yandex.cloud/ru/docs/vpc/operations/network-create
+echo "Создание облачной сети..."
+yc vpc network create --name $NETWORK_NAME
+
+# Шаг 2: Создание подсети https://yandex.cloud/ru/docs/vpc/operations/subnet-create
+echo "Создание подсети..."
+yc vpc subnet create --name $SUBNET_NAME --zone $REGION --range 192.168.0.0/24 --network-name $NETWORK_NAME
+
+# Шаг 3: Генерация публичного и приватного ключей SSH https://yandex.cloud/ru/docs/compute/operations/vm-connect/ssh#creating-ssh-keys
+echo "Генерация SSH ключей..."
+if [ ! -d "~/.ssh" ]; then
+  mkdir ~/.ssh
+fi
+if [ ! -d "~/.ssh/$VM_NAME" ]; then
+  mkdir ~/.ssh/$VM_NAME
+fi
+ssh-keygen -t ed25519 -f ~/.ssh/$VM_NAME/$VM_NAME-key -N "" > /dev/null
+PUBLIC_KEY=$(cat ~/.ssh/$VM_NAME/$VM_NAME-key.pub)
+
+# Шаг 4: Создание виртуальной машины https://yandex.cloud/ru/docs/compute/operations/vm-create/create-linux-vm
+echo "Создание виртуальной машины..."
+yc compute instance create \
+  --name $VM_NAME \
+  --platform standard-v3 \
+  --zone $REGION \
+  --network-interface subnet-name=$SUBNET_NAME,network-name=$NETWORK_NAME,nat-ip-version=ipv4 \
+  --hostname $VM_NAME \
+  --memory 4GB \
+  --cores 2 \
+  --create-boot-disk size=20GB,image-folder-id=standard-images,image-name=ubuntu-24-04-lts-v20241111 \
+  --image ubuntu-24-04-lts \
+  --ssh-key ~/.ssh/$VM_NAME/$VM_NAME-key.pub
+
+# Шаг 5: Получение внешнего IP для SSH подключения 84.201.157.142
+VM_EXTERNAL_IP=$(yc compute instance list --format json | jq -r ".[] | select(.name == \"$VM_NAME\") | .network_interfaces[0].primary_v4_address.one_to_one_nat.address")
+
+# Шаг 6: Подключение через SSH и запуск Docker-контейнера
+echo "Запуск Docker контейнера с веб-приложением на виртуальной машине..."
+yc compute instance wait --id $VM_ID --status RUNNING
+ssh -i ~/.ssh/$VM_NAME-key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ipiris@$VM_EXTERNAL_IP <<EOF
+    apt install docker.io
+    systemctl start docker
+    docker pull jmix/jmix-bookstore
+    docker run -d -p 8080:8080 jmix/jmix-bookstore
+EOF
+
+# Шаг 7: Вывод строки для подключения и строки для открытия веб-приложения
+echo "Подключитесь к виртуальной машине по SSH с помощью команды:"
+echo "ssh -i ~/.ssh/$VM_NAME-key yc@$VM_EXTERNAL_IP"
+
+echo "Веб-приложение доступно по следующему URL:"
+echo "http://$VM_EXTERNAL_IP:8080"
