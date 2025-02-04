@@ -1,18 +1,11 @@
 #!/bin/bash
 
-# Проверка на наличие установленного yc
-if ! command -v yc &> /dev/null
-then
-    echo "Yandex Cloud CLI не установлен. Пожалуйста, установите yc."
-    exit 1
-fi
-
 # Вводим необходимые параметры
 NETWORK_NAME="task3-network"
 SUBNET_NAME="task3-subnetwork"
 VM_NAME="task3-vm"
 REGION="ru-central1-a"
-IMAGE_NAME="ubuntu-20-04-lts"
+USER="ipiris"
 
 # Шаг 1: Создание облачной сети https://yandex.cloud/ru/docs/vpc/operations/network-create
 echo "Создание облачной сети..."
@@ -44,25 +37,24 @@ yc compute instance create \
   --memory 4GB \
   --cores 2 \
   --create-boot-disk size=20GB,image-folder-id=standard-images,image-name=ubuntu-24-04-lts-v20241111 \
-  --image ubuntu-24-04-lts \
-  --ssh-key ~/.ssh/$VM_NAME/$VM_NAME-key.pub
+  --metadata-from-file user-data=metadata.yaml 
 
-# Шаг 5: Получение внешнего IP для SSH подключения 84.201.157.142
+# Шаг 5: Получение внешнего IP для SSH подключения
 VM_EXTERNAL_IP=$(yc compute instance list --format json | jq -r ".[] | select(.name == \"$VM_NAME\") | .network_interfaces[0].primary_v4_address.one_to_one_nat.address")
 
 # Шаг 6: Подключение через SSH и запуск Docker-контейнера
 echo "Запуск Docker контейнера с веб-приложением на виртуальной машине..."
-yc compute instance wait --id $VM_ID --status RUNNING
-ssh -i ~/.ssh/$VM_NAME-key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ipiris@$VM_EXTERNAL_IP <<EOF
-    apt install docker.io
-    systemctl start docker
+ssh -i ~/.ssh/$VM_NAME-key $USER@$VM_EXTERNAL_IP <<EOF
+    sudo apt install docker.io
+    sudo usermod -aG docker $USER
+    newgrp docker
     docker pull jmix/jmix-bookstore
     docker run -d -p 8080:8080 jmix/jmix-bookstore
 EOF
 
 # Шаг 7: Вывод строки для подключения и строки для открытия веб-приложения
 echo "Подключитесь к виртуальной машине по SSH с помощью команды:"
-echo "ssh -i ~/.ssh/$VM_NAME-key yc@$VM_EXTERNAL_IP"
+echo "ssh -i ~/.ssh/$VM_NAME-key $USER@$VM_EXTERNAL_IP"
 
 echo "Веб-приложение доступно по следующему URL:"
 echo "http://$VM_EXTERNAL_IP:8080"
